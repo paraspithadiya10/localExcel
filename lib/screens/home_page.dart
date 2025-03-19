@@ -120,6 +120,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       title: Text(excelData[index][1]),
                       subtitle: Text(excelData[index][2]),
+                      trailing: Icon(Icons.share),
                     ),
                   ),
                 );
