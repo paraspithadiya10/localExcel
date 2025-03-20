@@ -16,6 +16,14 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<List<String>> excelData = [];
   List<String> filteredRow = [];
+
+  RawDatagramSocket? udpSocket;
+
+  String? wifiIp = '';
+
+  String deviceBrand = '';
+  String deviceModel = '';
+
   DbHelper? dbRef;
 
   Future<void> pickAndReadExcelFile() async {
@@ -99,13 +107,38 @@ class _HomePageState extends State<HomePage> {
   getDeviceInfo() async {
     DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-    debugPrint('Running on ${androidInfo.brand} ${androidInfo.model}');
+    deviceBrand = androidInfo.brand;
+    deviceModel = androidInfo.model;
   }
+
+  Future<void> boundUdpSocket() async {
+    udpSocket = await RawDatagramSocket.bind('10.0.2.16', 5555);
+    udpSocket?.listen((RawSocketEvent event) {
+      if (event == RawSocketEvent.read) {
+        Datagram? datagram = udpSocket!.receive();
+        if (datagram != null) {
+          String message = String.fromCharCodes(datagram.data);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content:
+                  Text('Received: $message from $deviceBrand $deviceModel')));
+        }
+      }
+    });
+    debugPrint(
+        'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port}');
+  }
+
+  // getWifiIp() {
+  //   try{
+  //     wifiIp = Networki
+  //   }
+  // }
 
   @override
   void initState() {
     dbRef = DbHelper.getInstance;
     getDeviceInfo();
+    boundUdpSocket();
     super.initState();
     loadDataFromDB();
   }
@@ -114,7 +147,7 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Users'),
+        title: Text('$deviceBrand $deviceModel'),
         centerTitle: true,
       ),
       body: excelData.isEmpty
@@ -133,7 +166,13 @@ class _HomePageState extends State<HomePage> {
                       ),
                       title: Text(excelData[index][1]),
                       subtitle: Text(excelData[index][2]),
-                      trailing: Icon(Icons.share),
+                      trailing: IconButton(
+                          onPressed: () {
+                            udpSocket!.send(excelData[index][1].codeUnits,
+                                InternetAddress('10.0.2.16'), 5555);
+                            debugPrint('message send successfully');
+                          },
+                          icon: Icon(Icons.send)),
                     ),
                   ),
                 );
