@@ -19,31 +19,36 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> pickAndReadExcelFile() async {
     try {
-      await dbRef?.deleteAllData();
+      // Open file picker
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx'],
       );
 
       if (result != null) {
+        await dbRef?.deleteAllData();
         File file = File(result.files.single.path!);
 
+        // Read the Excel file
         var bytes = file.readAsBytesSync();
         var excel = Excel.decodeBytes(bytes);
 
         List<List<String>> data = [];
 
+        // Iterate over the rows and columns in the first sheet
         for (var table in excel.tables.keys) {
           for (var row in excel.tables[table]!.rows) {
+            // Filter out null cells and convert them to strings
             filteredRow = row
-                .where((cell) => cell != null)
-                .map((cell) => cell!.value.toString())
+                .where((cell) => cell != null) // Skip null cells
+                .map((cell) =>
+                    cell!.value.toString()) // Convert non-null cells to strings
                 .toList();
 
             if (filteredRow.isNotEmpty) {
-              data.add(filteredRow);
+              data.add(filteredRow); // Add non-empty rows
 
-              print(filteredRow);
+              debugPrint('$filteredRow');
 
               await dbRef?.addData(
                   excelid: filteredRow[0],
@@ -51,7 +56,7 @@ class _HomePageState extends State<HomePage> {
                   excelemail: filteredRow[2]);
             }
           }
-          break;
+          break; // Read only the first sheet
         }
         loadDataFromDB();
       }
