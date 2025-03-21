@@ -120,15 +120,14 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> boundUdpSocket() async {
     if (wifiIp!.isNotEmpty || wifiIp != null) {
-      udpSocket = await RawDatagramSocket.bind("192.168.1.50", 5555);
+      udpSocket = await RawDatagramSocket.bind("192.168.1.39", 5555);
       udpSocket?.listen((RawSocketEvent event) {
         if (event == RawSocketEvent.read) {
           Datagram? datagram = udpSocket!.receive();
           if (datagram != null) {
             String message = String.fromCharCodes(datagram.data);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content:
-                    Text('Received: $message from $deviceBrand $deviceModel')));
+            ScaffoldMessenger.of(context)
+                .showSnackBar(SnackBar(content: Text('Received: $message')));
           }
         }
       });
@@ -177,8 +176,11 @@ class _HomePageState extends State<HomePage> {
                       subtitle: Text(excelData[index][2]),
                       trailing: IconButton(
                           onPressed: () async {
-                            udpSocket?.send(excelData[index][1].codeUnits,
-                                InternetAddress("192.168.1.39"), 5555);
+                            udpSocket?.send(
+                                '${excelData[index][1]} from : $deviceBrand $deviceModel'
+                                    .codeUnits,
+                                InternetAddress("192.168.1.50"),
+                                5555);
                             debugPrint('message send successfully');
                           },
                           icon: Icon(Icons.send)),
