@@ -5,6 +5,7 @@ import 'package:excel/excel.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:localxcel/database/db_helper.dart';
+import 'package:network_info_plus/network_info_plus.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,6 +20,7 @@ class _HomePageState extends State<HomePage> {
 
   RawDatagramSocket? udpSocket;
 
+  final info = NetworkInfo();
   String? wifiIp = '';
 
   String deviceBrand = '';
@@ -109,38 +111,45 @@ class _HomePageState extends State<HomePage> {
     AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
     deviceBrand = androidInfo.brand;
     deviceModel = androidInfo.model;
+    setState(() {});
+  }
+
+  getWifiIp() async {
+    wifiIp = await info.getWifiIP();
   }
 
   Future<void> boundUdpSocket() async {
-    udpSocket = await RawDatagramSocket.bind('10.0.2.16', 5555);
-    udpSocket?.listen((RawSocketEvent event) {
-      if (event == RawSocketEvent.read) {
-        Datagram? datagram = udpSocket!.receive();
-        if (datagram != null) {
-          String message = String.fromCharCodes(datagram.data);
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content:
-                  Text('Received: $message from $deviceBrand $deviceModel')));
+    if (wifiIp!.isNotEmpty || wifiIp != null) {
+      udpSocket = await RawDatagramSocket.bind("192.168.1.50", 5555);
+      udpSocket?.listen((RawSocketEvent event) {
+        if (event == RawSocketEvent.read) {
+          Datagram? datagram = udpSocket!.receive();
+          if (datagram != null) {
+            String message = String.fromCharCodes(datagram.data);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content:
+                    Text('Received: $message from $deviceBrand $deviceModel')));
+          }
         }
-      }
-    });
-    debugPrint(
-        'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port}');
+      });
+      debugPrint(
+          'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port} \n Ip address: $wifiIp');
+    } else {
+      debugPrint('Failed to get Wifi ip address');
+    }
   }
-
-  // getWifiIp() {
-  //   try{
-  //     wifiIp = Networki
-  //   }
-  // }
 
   @override
   void initState() {
-    dbRef = DbHelper.getInstance;
-    getDeviceInfo();
+    getWifiIp();
     boundUdpSocket();
-    super.initState();
+
+    getDeviceInfo();
+
+    dbRef = DbHelper.getInstance;
     loadDataFromDB();
+
+    super.initState();
   }
 
   @override
@@ -167,10 +176,10 @@ class _HomePageState extends State<HomePage> {
                       title: Text(excelData[index][1]),
                       subtitle: Text(excelData[index][2]),
                       trailing: IconButton(
-                          onPressed: () {
-                            udpSocket!.send(excelData[index][1].codeUnits,
-                                InternetAddress('10.0.2.16'), 5555);
-                            debugPrint('message send successfully');
+                          onPressed: () async {
+                            udpSocket?.send(excelData[index][1].codeUnits,
+                                InternetAddress("192.168.1.39"), 5555);
+                            debugPrint('message send successfully to $wifiIp');
                           },
                           icon: Icon(Icons.send)),
                     ),
