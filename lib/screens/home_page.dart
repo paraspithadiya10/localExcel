@@ -133,7 +133,7 @@ class _HomePageState extends State<HomePage> {
         }
       });
       debugPrint(
-          'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port} \n Ip address: $wifiIp');
+          'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port}');
     } else {
       debugPrint('Failed to get Wifi ip address');
     }
@@ -179,7 +179,7 @@ class _HomePageState extends State<HomePage> {
                           onPressed: () async {
                             udpSocket?.send(excelData[index][1].codeUnits,
                                 InternetAddress("192.168.1.39"), 5555);
-                            debugPrint('message send successfully to $wifiIp');
+                            debugPrint('message send successfully');
                           },
                           icon: Icon(Icons.send)),
                     ),
