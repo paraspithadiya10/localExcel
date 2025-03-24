@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:localxcel/database/db_helper.dart';
 import 'package:network_info_plus/network_info_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,6 +23,8 @@ class _HomePageState extends State<HomePage> {
 
   final info = NetworkInfo();
   String? wifiIp = '';
+
+  String? ipAddress;
 
   String deviceBrand = '';
   String deviceModel = '';
@@ -114,25 +117,59 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
-  getWifiIp() async {
-    wifiIp = await info.getWifiIP();
+  Future<void> getWifiIp() async {
+    try {
+      wifiIp = await info.getWifiIP();
+      if (wifiIp == null || wifiIp!.isEmpty) {
+        debugPrint('WiFi IP is null or empty');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            backgroundColor: Colors.red,
+            content: Text(
+              'Please connect to WiFi network',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        );
+      } else {
+        debugPrint('WiFi IP obtained: $wifiIp');
+      }
+      setState(() {});
+    } catch (e) {
+      debugPrint('Error getting WiFi IP: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Colors.red,
+          content: Text(
+            'Error getting WiFi IP. Please check WiFi connection',
+            style: TextStyle(color: Colors.white),
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> boundUdpSocket() async {
-    if (wifiIp!.isNotEmpty || wifiIp != null) {
-      udpSocket = await RawDatagramSocket.bind("192.168.1.39", 5555);
-      udpSocket?.listen((RawSocketEvent event) {
-        if (event == RawSocketEvent.read) {
-          Datagram? datagram = udpSocket!.receive();
-          if (datagram != null) {
-            String message = String.fromCharCodes(datagram.data);
-            ScaffoldMessenger.of(context)
-                .showSnackBar(SnackBar(content: Text('Received: $message')));
+    if (wifiIp != null && wifiIp!.isNotEmpty) {
+      try {
+        // Validate IP address format before binding
+        final address = InternetAddress(wifiIp!);
+        udpSocket = await RawDatagramSocket.bind(address, 5555);
+        udpSocket?.listen((RawSocketEvent event) {
+          if (event == RawSocketEvent.read) {
+            Datagram? datagram = udpSocket!.receive();
+            if (datagram != null) {
+              String message = String.fromCharCodes(datagram.data);
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(SnackBar(content: Text('Received: $message')));
+            }
           }
-        }
-      });
-      debugPrint(
-          'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port}');
+        });
+        debugPrint(
+            'UDP socket is bound to ${udpSocket!.address.address}:${udpSocket!.port}');
+      } catch (e) {
+        debugPrint('Invalid IP address format: $wifiIp');
+      }
     } else {
       debugPrint('Failed to get Wifi ip address');
     }
@@ -140,23 +177,42 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void initState() {
-    getWifiIp();
-    boundUdpSocket();
+    super.initState();
+
+    getWifiIp().then((_) {
+      // Only bind UDP socket after getting WiFi IP
+      if (wifiIp != null && wifiIp!.isNotEmpty) {
+        boundUdpSocket();
+      }
+    });
 
     getDeviceInfo();
-
     dbRef = DbHelper.getInstance;
     loadDataFromDB();
-
-    super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
+    double height = MediaQuery.sizeOf(context).height;
+    double width = MediaQuery.sizeOf(context).width;
+
+    TextEditingController ipController = TextEditingController();
+
     return Scaffold(
       appBar: AppBar(
         title: Text('$deviceBrand $deviceModel'),
         centerTitle: true,
+        actions: [
+          IconButton(
+              onPressed: () {
+                showModalBottomSheet(
+                    context: context,
+                    builder: (context) {
+                      return ipBottomSheet(height, width, ipController);
+                    });
+              },
+              icon: Icon(Icons.add))
+        ],
       ),
       body: excelData.isEmpty
           ? const Center(
@@ -176,12 +232,38 @@ class _HomePageState extends State<HomePage> {
                       subtitle: Text(excelData[index][2]),
                       trailing: IconButton(
                           onPressed: () async {
-                            udpSocket?.send(
-                                '${excelData[index][1]} from : $deviceBrand $deviceModel'
-                                    .codeUnits,
-                                InternetAddress("192.168.1.50"),
-                                5555);
-                            debugPrint('message send successfully');
+                            var sharedPref =
+                                await SharedPreferences.getInstance();
+                            ipAddress = sharedPref.getString("ipAddress");
+
+                            if (ipAddress == null || ipAddress!.isEmpty) {
+                              ScaffoldMessenger.of(context)
+                                  .showSnackBar(SnackBar(
+                                      backgroundColor: Colors.red,
+                                      content: Text(
+                                        "Please set receiver device's ip address from (+) button",
+                                        style: TextStyle(color: Colors.white),
+                                      )));
+                            } else {
+                              try {
+                                // Validate IP address format before sending
+                                final address = InternetAddress(ipAddress!);
+                                udpSocket?.send(
+                                    '${excelData[index][1]} from : $deviceBrand $deviceModel'
+                                        .codeUnits,
+                                    address,
+                                    5555);
+                                debugPrint('message sent successfully');
+                              } catch (e) {
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(SnackBar(
+                                        backgroundColor: Colors.red,
+                                        content: Text(
+                                          "Invalid IP address format",
+                                          style: TextStyle(color: Colors.white),
+                                        )));
+                              }
+                            }
                           },
                           icon: Icon(Icons.send)),
                     ),
@@ -194,6 +276,53 @@ class _HomePageState extends State<HomePage> {
           pickAndReadExcelFile();
         },
         child: Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget ipBottomSheet(
+    height,
+    width,
+    ipController,
+  ) {
+    return Container(
+      padding: EdgeInsets.only(left: 25, right: 25, top: 10),
+      height: height * 0.25 + MediaQuery.of(context).viewInsets.bottom,
+      width: width * 1.0,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(25)),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            height: 4,
+            width: width * 0.15,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(height: height * 0.03),
+          TextFormField(
+            controller: ipController,
+            decoration: InputDecoration(
+                label: Text('Enter IP Address'),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10))),
+          ),
+          SizedBox(height: height * 0.03),
+          SizedBox(
+              width: double.maxFinite,
+              child: ElevatedButton(
+                  onPressed: () async {
+                    var sharedPref = await SharedPreferences.getInstance();
+                    await sharedPref.setString("ipAddress", ipController.text);
+                    Navigator.pop(context);
+                  },
+                  style: ButtonStyle(
+                      backgroundColor:
+                          WidgetStateProperty.all(Colors.deepPurple)),
+                  child: Text('Confirm')))
+        ],
       ),
     );
   }
